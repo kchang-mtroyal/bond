@@ -153,6 +153,10 @@
         }
 
         function addBond() {
+            const purchaseDateStr = document.getElementById('purchaseDate').value;
+            const maturityDateStr = document.getElementById('maturityDate').value;
+            const callDateStr = document.getElementById('callDate').value;
+
             const data = {
                 id: Date.now(),
                 name: document.getElementById('bondName').value,
@@ -161,6 +165,7 @@
                 purchaseDate: parseDateInput('purchaseDate'),
                 maturityDate: parseDateInput('maturityDate'),
                 callDate: parseDateInput('callDate'),
+                callDateStr: callDateStr, // 保存原始字串
                 faceValue: parseFloat(document.getElementById('faceValue').value),
                 cleanPrice: parseFloat(document.getElementById('cleanPrice').value),
                 totalCost: parseFloat(document.getElementById('totalCost').value),
@@ -197,6 +202,7 @@
             const rate = data.couponRate / 100;
             const price = data.cleanPrice / 100;
             
+            // 計算前手息
             let tempDate = new Date(data.maturityDate);
             let couponDates = [];
             while (tempDate > new Date(data.purchaseDate.getFullYear() - 2, 0, 1)) {
@@ -218,12 +224,11 @@
             const principalCost = faceVal * price;
             const commission = data.totalCost - principalCost - accruedInterest;
 
-            // 基本 YTM / YTC 計算 (使用修正後的邏輯)
             const ytmResult = calculateYield(data.totalCost, data.purchaseDate, data.maturityDate, periodCoupon, nextCouponDate, faceVal);
             const ytcResult = calculateYield(data.totalCost, data.purchaseDate, data.callDate, periodCoupon, nextCouponDate, faceVal);
 
-            // 生成配息試算表
-            const schedule = generateSchedule(data.totalCost, data.purchaseDate, data.maturityDate, periodCoupon, nextCouponDate, faceVal, data.callDate);
+            // 生成配息試算表 (傳入 Call Date 字串進行比對)
+            const schedule = generateSchedule(data.totalCost, data.purchaseDate, data.maturityDate, periodCoupon, nextCouponDate, faceVal, data.callDateStr, data.callDate);
 
             let marketResult = null;
             if (data.marketPrice) {
@@ -253,7 +258,7 @@
             return `${y}-${m}-${day}`;
         }
 
-        function generateSchedule(cost, startDate, endDate, periodCoupon, firstCouponDate, faceVal, callDate) {
+        function generateSchedule(cost, startDate, endDate, periodCoupon, firstCouponDate, faceVal, callDateStr, callDate) {
             let schedule = [];
             
             // 1. 產生標準配息列表
@@ -269,18 +274,16 @@
             
             // 檢查 Call Date 是否需要插入
             if (callDate > startDate && callDate <= endDate) {
-                const callDateStr = fmtIsoDate(callDate);
-                const exists = standardDates.some(d => fmtIsoDate(d) === callDateStr);
+                const callIso = fmtIsoDate(callDate);
+                const exists = standardDates.some(d => fmtIsoDate(d) === callIso);
                 if (!exists) {
                     allDates.push({ date: callDate, type: 'call' });
                 } else {
-                    // 如果 Call Date 剛好是配息日，標記該配息日為 Call Date
-                    const match = allDates.find(item => fmtIsoDate(item.date) === callDateStr);
+                    const match = allDates.find(item => fmtIsoDate(item.date) === callIso);
                     if (match) match.isCallDate = true;
                 }
             }
             
-            // 排序
             allDates.sort((a, b) => a.date - b.date);
 
             // 3. 遍歷計算
@@ -295,48 +298,56 @@
                 if (item.type === 'coupon') {
                     currentAmount = periodCoupon;
                     cumulativeInterest += currentAmount;
-                    lastInterestDate = new Date(currentD); // 更新上一次完整配息日
+                    lastInterestDate = new Date(currentD); 
                 } else {
                     // 破月利息計算
                     const days = getDays30360(lastInterestDate, currentD);
-                    // 防止日期順序異常導致負數
                     const safeDays = Math.max(0, days);
                     currentAmount = periodCoupon * (safeDays / 180);
-                    // 破月利息「不」累加到 cumulativeInterest，因為這行是假設這天贖回，如果不贖回，這筆錢不存在
                 }
 
-                // 計算當日贖回的總回報
-                // 拿回 = (如果是 Call Row ? 之前累積 + 這次破月 : 累積到這次) + 本金
-                let totalReceived = (item.type === 'coupon' ? cumulativeInterest : cumulativeInterest + currentAmount) + faceVal;
+                // *** 修改重點：計算累積損益 ***
+                // 情境：當日贖回 -> 拿回本金 + 這一期的利息(或破月息) + 之前所有領到的利息
+                // 累積損益 = (累積已領息 + 當期息 + 本金) - 當初總成本
+                // 這裡的 cumulativeInterest 已經包含 currentAmount (如果是 coupon)
+                // 如果是 call (type != coupon)，cumulativeInterest 還沒加上 currentAmount，所以要手動加
                 
-                const totalROI = (totalReceived - cost) / cost;
+                let totalReceived = 0;
+                if (item.type === 'coupon') {
+                    totalReceived = cumulativeInterest + faceVal;
+                } else {
+                    totalReceived = cumulativeInterest + currentAmount + faceVal;
+                }
+                
+                // 淨損益金額
+                const netProfit = totalReceived - cost;
+
+                const totalROI = netProfit / cost;
                 const daysDiff = (currentD - startDate) / (1000 * 60 * 60 * 24);
                 const years = daysDiff / 365;
                 const simpleAnnualROI = years > 0 ? (totalROI / years) : 0;
 
-                // XIRR 計算
                 let tempFlows = [-cost];
                 let tempDates = [new Date(startDate)];
                 
-                // 加入之前的配息 (不含當前這筆，如果是破月的話)
                 allDates.filter(x => x.date < currentD && x.type === 'coupon').forEach(x => {
                     tempFlows.push(periodCoupon);
                     tempDates.push(new Date(x.date));
                 });
                 
-                // 加入當前這一筆結算 (配息/破月息 + 本金)
                 tempFlows.push(currentAmount + faceVal);
                 tempDates.push(new Date(currentD));
                 
                 const xirrVal = XIRR(tempFlows, tempDates);
                 
-                // 判斷是否為 Call Date
                 const isTargetCall = (item.type === 'call' || item.isCallDate);
 
                 schedule.push({
                     date: currentD,
                     amount: currentAmount,
+                    // 這裡為了表格顯示，如果是 Call Date 插入行，累積利息我們顯示到當下拿到的總息
                     cumulative: item.type === 'coupon' ? cumulativeInterest : cumulativeInterest + currentAmount,
+                    netProfit: netProfit, // 新增：累積損益金額
                     totalROI: totalROI * 100,
                     simpleAnnualROI: simpleAnnualROI * 100,
                     annualizedROI: xirrVal ? xirrVal * 100 : 0,
@@ -347,17 +358,14 @@
             return schedule;
         }
 
-        // 修改 calculateYield 以支援非標準日期的贖回計算
         function calculateYield(cost, startDate, endDate, periodCoupon, firstCouponDate, faceVal) {
             let cashFlows = [-cost];
             let dates = [new Date(startDate)];
             
             let currentD = new Date(firstCouponDate);
-            // 找出 endDate 之前的最後一個標準配息日
             let lastStandardCoupon = new Date(firstCouponDate);
             lastStandardCoupon.setMonth(lastStandardCoupon.getMonth() - 6);
 
-            // 加入中間的標準配息
             while (currentD < endDate) {
                 cashFlows.push(periodCoupon);
                 dates.push(new Date(currentD));
@@ -365,16 +373,12 @@
                 currentD.setMonth(currentD.getMonth() + 6);
             }
             
-            // 處理最後一筆 (可能是標準配息+本金，或是破月息+本金)
             let finalPayment = faceVal;
-            
-            // 檢查 endDate 是否剛好是下一個配息日
             const isStandardEnd = (fmtIsoDate(currentD) === fmtIsoDate(endDate));
             
             if (isStandardEnd) {
                 finalPayment += periodCoupon;
             } else {
-                // 計算破月利息
                 const days = getDays30360(lastStandardCoupon, endDate);
                 const safeDays = Math.max(0, days);
                 finalPayment += periodCoupon * (safeDays / 180);
@@ -385,7 +389,6 @@
             
             const xirrVal = XIRR(cashFlows, dates);
             
-            // 計算總利息收入 (總拿回 - 本金)
             const totalReceived = cashFlows.slice(1).reduce((a, b) => a + b, 0);
             const totalInterest = totalReceived - faceVal;
 
@@ -470,11 +473,15 @@
                     rowClass = 'call-date-row'; 
                     dateCellContent += ` <span class="call-date-tag">🔔 提前贖回</span>`;
                 }
+                
+                // 損益顏色：賺錢綠色，賠錢紅色
+                const profitClass = row.netProfit >= 0 ? 'text-green-700 font-bold' : 'text-red-600 font-bold';
+
                 return `
                     <tr class="${rowClass}">
                         <td>${dateCellContent}</td>
                         <td class="text-blue-600 font-mono">${fmtMoney(row.amount)}</td>
-                        <td class="text-gray-500 font-mono">${fmtMoney(row.cumulative)}</td>
+                        <td class="${profitClass} font-mono">${fmtMoney(row.netProfit)}</td>
                         <td class="${row.totalROI >= 0 ? 'text-green-600' : 'text-red-500'} font-bold">${fmtPct(row.totalROI)}</td>
                         <td class="text-gray-600">${fmtPct(row.simpleAnnualROI)}</td>
                         <td class="font-bold text-blue-700">${fmtPct(row.annualizedROI)}</td>
@@ -540,7 +547,7 @@
                                 <tr>
                                     <th>日期</th>
                                     <th>領息金額</th>
-                                    <th>累積領息</th>
+                                    <th>累積損益</th>
                                     <th>總報酬率</th>
                                     <th>簡單年化(你的)</th>
                                     <th>專業年化(XIRR)</th>

@@ -20,18 +20,52 @@
         .call-date-row td { color: #b45309; font-weight: 800; }
         .call-date-tag { display: inline-block; background-color: #f59e0b; color: white; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle; }
         
-        /* 修正：使用 opacity: 0 讓它在頁面上存在但不顯示，以便 JS 可以調用 showPicker */
         .hidden-date-picker { opacity: 0; position: absolute; width: 0; height: 0; top: 0; left: 0; border: 0; padding: 0; margin: 0; }
-        
-        /* 讓容器相對定位，以便放置隱藏的 input */
         .date-container { position: relative; }
+
+        /* 左右滾動動畫設定 */
+        @keyframes roll-head {
+            0% { transform: rotate(0deg); }
+            25% { transform: rotate(-20deg); } /* 向左滾 */
+            50% { transform: rotate(0deg); }
+            75% { transform: rotate(20deg); }  /* 向右滾 */
+            100% { transform: rotate(0deg); }
+        }
+
+        .mascot-logo {
+            display: inline-block;
+            font-size: 1.8rem; /* LOGO 大小調整為適合文字 */
+            font-weight: 900;  /* 粗體 */
+            color: #d97706;    /* 橘色系 */
+            background-color: #fffbeb;
+            padding: 2px 8px;
+            border-radius: 50%; /* 圓形背景 */
+            border: 2px solid #f59e0b;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            
+            /* 設定動畫：每 2.5 秒執行一次，無限循環 */
+            animation: roll-head 2.5s ease-in-out infinite;
+            transform-origin: center center; /* 以中心點為軸心滾動 */
+            cursor: default;
+            white-space: nowrap;
+        }
+        
+        /* 滑鼠移過去時滾快一點 */
+        .mascot-logo:hover {
+            animation: roll-head 0.5s ease-in-out infinite;
+        }
     </style>
 </head>
 <body class="p-4 md:p-8">
 
     <div class="max-w-6xl mx-auto">
+        <!-- 標題區 (修改) -->
         <div class="text-center mb-8">
-            <h1 class="text-3xl font-bold text-blue-800 mb-2">💰 媽媽的債券小幫手</h1>
+            <h1 class="text-3xl font-bold text-blue-800 mb-2 flex items-center justify-center gap-3">
+                <span>💰 媽媽的債券小幫手</span>
+                <!-- 會滾動的 LOGO -->
+                <span class="mascot-logo" title="我是老K!">老K</span>
+            </h1>
             <p class="text-gray-600">輸入資料，輕鬆幫您算出真實報酬率與現金流</p>
         </div>
 
@@ -64,12 +98,11 @@
                         </div>
                     </div>
 
-                    <!-- 日期設定 (修正日曆點擊) -->
+                    <!-- 日期設定 -->
                     <div class="grid grid-cols-2 gap-4">
                         <div class="date-container">
                             <div class="flex items-center gap-1 mb-1">
                                 <label class="block text-sm font-medium text-gray-700">購買日期</label>
-                                <!-- 使用 onclick 強制觸發 showPicker -->
                                 <span class="cursor-pointer text-lg hover:bg-gray-100 rounded px-1 select-none" title="點擊選擇日期" onclick="openPicker('purchaseDatePick')">📅</span>
                                 <input type="date" id="purchaseDatePick" class="hidden-date-picker" onchange="syncDate('purchaseDatePick', 'purchaseDate')">
                             </div>
@@ -180,26 +213,20 @@
         const dd = String(today.getDate()).padStart(2, '0');
         const todayStr = `${yyyy}/${mm}/${dd}`;
         
-        // 預設購買日期為今天
         document.getElementById('purchaseDate').value = todayStr;
 
         let bondsDataList = [];
 
-        // 觸發日期選擇器 (修正版)
         function openPicker(inputId) {
             try {
                 const input = document.getElementById(inputId);
-                // 嘗試使用現代瀏覽器的 showPicker API
                 if (input.showPicker) {
                     input.showPicker();
                 } else {
-                    // Fallback: 聚焦 (在某些手機瀏覽器會有效)
                     input.focus();
                     input.click();
                 }
             } catch (e) {
-                console.log('Browser does not support showPicker or input is hidden', e);
-                // 最後手段：暫時讓它變大並點擊
                 const input = document.getElementById(inputId);
                 input.style.opacity = 1;
                 input.style.width = '1px';
@@ -213,12 +240,10 @@
             }
         }
 
-        // 日期選擇器同步功能 (格式轉換為 YYYY/MM/DD)
         function syncDate(pickerId, inputId) {
             const picker = document.getElementById(pickerId);
             const input = document.getElementById(inputId);
             if (picker.value) {
-                // 將 YYYY-MM-DD 轉為 YYYY/MM/DD
                 input.value = picker.value.replace(/-/g, '/');
             }
         }
@@ -237,7 +262,6 @@
             }
         }
 
-        // 清空表單按鈕功能
         function resetForm() {
             if(confirm("確定要清空輸入欄位嗎？")) {
                 document.getElementById('bondForm').reset();
@@ -259,7 +283,6 @@
             window.open(url, '_blank');
         }
 
-        // 智慧日期解析
         function parseSmartDate(val) {
             if (!val) return null;
             val = val.trim();

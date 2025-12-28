@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>媽媽的債券計算機</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: "Microsoft JhengHei", sans-serif; background-color: #f3f4f6; }
+        .input-group label { font-size: 0.9rem; font-weight: 600; color: #374151; }
+        .result-card { transition: all 0.3s; }
+        .result-card:hover { transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <!-- 標題區 -->
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-blue-800 mb-2">💰 媽媽的債券小幫手</h1>
+            <p class="text-gray-600">輸入資料，輕鬆幫您算出真實報酬率 (YTM/YTC)</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- 左側：輸入表單 -->
+            <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-md h-fit">
+                <h2 class="text-xl font-bold border-b pb-3 mb-4 text-gray-700 flex items-center">
+                    📝 新增債券資料
+                </h2>
+                
+                <form id="bondForm" class="space-y-4">
+                    <!-- 基本資料 -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">債券名稱 (或是代號)</label>
+                        <input type="text" id="bondName" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2" placeholder="例如: 花旗銀行 2035" required>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">CUSIP (選填)</label>
+                            <input type="text" id="cusip" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="代碼">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">票面利率 (%)</label>
+                            <input type="number" step="0.001" id="couponRate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="5.449" required>
+                        </div>
+                    </div>
+
+                    <!-- 日期設定 -->
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">購買日期</label>
+                            <input type="date" id="purchaseDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" required>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">到期日</label>
+                            <input type="date" id="maturityDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" required>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">券商可贖回日 (Call Date)</label>
+                        <input type="date" id="callDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" required>
+                        <p class="text-xs text-gray-500 mt-1">*通常是到期前3個月或1年</p>
+                    </div>
+
+                    <!-- 金額設定 -->
+                    <div class="bg-blue-50 p-3 rounded-lg space-y-3 border border-blue-100">
+                        <div>
+                            <label class="block text-sm font-medium text-blue-900">申購面額 (Face Value)</label>
+                            <input type="number" id="faceValue" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="100000" value="100000" required>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-blue-900">申購成交價 (Price)</label>
+                            <input type="number" step="0.001" id="cleanPrice" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="104.351" required>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-blue-900">實際繳交總金額 (含息費)</label>
+                            <input type="number" step="0.01" id="totalCost" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="104867.11" required>
+                            <p class="text-xs text-blue-600 mt-1">*請看對帳單上的 Total 扣款金額</p>
+                        </div>
+                    </div>
+
+                    <!-- 市場比較 -->
+                    <div class="bg-green-50 p-3 rounded-lg border border-green-100">
+                        <label class="block text-sm font-medium text-green-900">當下 IBKR 市場賣價 (Ask Price)</label>
+                        <div class="flex gap-2 mt-1">
+                            <input type="number" step="0.001" id="marketPrice" class="block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="103.50">
+                            <button type="button" onclick="searchPrice()" class="bg-green-600 text-white px-3 py-2 rounded shadow hover:bg-green-700 whitespace-nowrap text-sm" title="去 Google 搜尋價格">
+                                🔍 找價格
+                            </button>
+                        </div>
+                        <p class="text-xs text-green-600 mt-1">*如果不知道價格，請按右邊按鈕搜尋 CUSIP</p>
+                    </div>
+
+                    <button type="button" onclick="addBond()" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-300 shadow-lg">
+                        ➕ 加入清單並計算
+                    </button>
+                </form>
+            </div>
+
+            <!-- 右側：結果清單 -->
+            <div class="lg:col-span-2 space-y-6">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-2xl font-bold text-gray-800">📊 計算結果清單</h2>
+                    <button onclick="clearAll()" class="text-red-500 hover:text-red-700 text-sm font-semibold underline">清空所有資料</button>
+                </div>
+
+                <div id="resultsContainer" class="space-y-4">
+                    <!-- 這裡會動態插入結果卡片 -->
+                    <div id="emptyState" class="bg-white p-12 rounded-xl shadow border-2 border-dashed border-gray-300 text-center text-gray-400">
+                        <p class="text-lg">👈 請在左側輸入資料，按下「加入」按鈕</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript 邏輯 -->
+    <script>
+        // 設定預設日期為今天
+        document.getElementById('purchaseDate').valueAsDate = new Date();
+
+        // 儲存所有債券資料
+        let bondsList = [];
+
+        function searchPrice() {
+            const cusip = document.getElementById('cusip').value;
+            const name = document.getElementById('bondName').value;
+            
+            if (!cusip && !name) {
+                alert("請先輸入 CUSIP 代碼或債券名稱，才能搜尋！");
+                return;
+            }
+
+            // 優先使用 CUSIP 搜尋，精準度較高
+            const query = cusip ? `${cusip} bond price` : `${name} bond price`;
+            const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+            window.open(url, '_blank');
+        }
+
+        function addBond() {
+            // 1. 獲取表單資料
+            const data = {
+                id: Date.now(),
+                name: document.getElementById('bondName').value,
+                cusip: document.getElementById('cusip').value || '-',
+                couponRate: parseFloat(document.getElementById('couponRate').value),
+                purchaseDate: new Date(document.getElementById('purchaseDate').value),
+                maturityDate: new Date(document.getElementById('maturityDate').value),
+                callDate: new Date(document.getElementById('callDate').value),
+                faceValue: parseFloat(document.getElementById('faceValue').value),
+                cleanPrice: parseFloat(document.getElementById('cleanPrice').value),
+                totalCost: parseFloat(document.getElementById('totalCost').value),
+                marketPrice: document.getElementById('marketPrice').value ? parseFloat(document.getElementById('marketPrice').value) : null
+            };
+
+            // 簡易驗證
+            if (!data.name || isNaN(data.couponRate) || isNaN(data.totalCost)) {
+                alert("請填寫所有必填欄位！");
+                return;
+            }
+
+            // 2. 執行計算
+            const result = calculateMetrics(data);
+            
+            // 3. 渲染結果
+            renderResult(result);
+            
+            // 4. 清除表單 (保留日期方便輸入下一筆)
+            document.getElementById('bondName').value = '';
+            document.getElementById('cusip').value = '';
+            document.getElementById('cleanPrice').value = '';
+            document.getElementById('totalCost').value = '';
+            // document.getElementById('bondForm').reset(); 
+            document.getElementById('emptyState').style.display = 'none';
+        }
+
+        function calculateMetrics(data) {
+            // 基礎參數
+            const faceVal = data.faceValue;
+            const rate = data.couponRate / 100;
+            const price = data.cleanPrice / 100;
+            
+            // 計算前手息 (Accrued Interest) - 30/360 近似法
+            // 尋找上一個配息日 (假設半年配)
+            let tempDate = new Date(data.maturityDate);
+            let couponDates = [];
+            while (tempDate > new Date(data.purchaseDate.getFullYear() - 1, 0, 1)) {
+                couponDates.push(new Date(tempDate));
+                tempDate.setMonth(tempDate.getMonth() - 6);
+            }
+            couponDates.sort((a, b) => a - b);
+            
+            let lastCouponDate = couponDates.filter(d => d <= data.purchaseDate).pop();
+            let nextCouponDate = couponDates.filter(d => d > data.purchaseDate)[0];
+            
+            // 如果找不到上一個配息日(例如新發行)，用發行日或購買日推算
+            if (!lastCouponDate) lastCouponDate = new Date(nextCouponDate.getTime()); // 簡化處理
+            
+            // 計算天數 (30/360 logic simplified for JS)
+            const daysHeld = getDays30360(lastCouponDate, data.purchaseDate);
+            const daysInPeriod = 180; // 標準半年
+            
+            const periodCoupon = faceVal * rate / 2;
+            const accruedInterest = periodCoupon * (daysHeld / daysInPeriod);
+            
+            // 計算手續費 (Commission)
+            // 總成本 = 本金(面額*淨價) + 前手息 + 手續費
+            const principalCost = faceVal * price;
+            const commission = data.totalCost - principalCost - accruedInterest;
+
+            // 計算 YTM
+            const ytmResult = calculateYield(data.totalCost, data.purchaseDate, data.maturityDate, periodCoupon, nextCouponDate, faceVal);
+            
+            // 計算 YTC
+            const ytcResult = calculateYield(data.totalCost, data.purchaseDate, data.callDate, periodCoupon, nextCouponDate, faceVal);
+
+            // 計算市場比較 (如果有填)
+            let marketResult = null;
+            if (data.marketPrice) {
+                const mPrice = data.marketPrice / 100;
+                // 假設現在買，手續費比例跟現在一樣，前手息也一樣(假設同天交割)
+                const estMarketCost = (faceVal * mPrice) + accruedInterest + commission;
+                const mYtm = calculateYield(estMarketCost, data.purchaseDate, data.maturityDate, periodCoupon, nextCouponDate, faceVal);
+                const mYtc = calculateYield(estMarketCost, data.purchaseDate, data.callDate, periodCoupon, nextCouponDate, faceVal);
+                marketResult = { ytm: mYtm, ytc: mYtc, cost: estMarketCost };
+            }
+
+            return {
+                input: data,
+                accruedInterest,
+                commission,
+                ytm: ytmResult,
+                ytc: ytcResult,
+                market: marketResult
+            };
+        }
+
+        function calculateYield(cost, startDate, endDate, periodCoupon, firstCouponDate, faceVal) {
+            let cashFlows = [];
+            let dates = [];
+            
+            // T0: 付出成本 (負數)
+            cashFlows.push(-cost);
+            dates.push(new Date(startDate));
+            
+            let totalInterest = 0;
+            let currentD = new Date(firstCouponDate);
+            
+            // 產生未來現金流
+            while (currentD <= endDate) {
+                cashFlows.push(periodCoupon);
+                dates.push(new Date(currentD));
+                totalInterest += periodCoupon;
+                currentD.setMonth(currentD.getMonth() + 6);
+            }
+            
+            // 最後一筆加上本金
+            // 如果最後一筆配息日等於到期日，直接加在本金上
+            // 注意: JS Date 比較需要轉 getTime
+            let lastDate = dates[dates.length-1];
+            if (lastDate.getTime() === endDate.getTime()) {
+                cashFlows[cashFlows.length-1] += faceVal;
+            } else {
+                cashFlows.push(faceVal);
+                dates.push(new Date(endDate));
+            }
+            
+            const xirrVal = XIRR(cashFlows, dates);
+            return {
+                rate: xirrVal * 100,
+                totalInterest: totalInterest
+            };
+        }
+
+        // 30/360 Day Count Function
+        function getDays30360(start, end) {
+            let D1 = start.getDate();
+            let M1 = start.getMonth();
+            let Y1 = start.getFullYear();
+            let D2 = end.getDate();
+            let M2 = end.getMonth();
+            let Y2 = end.getFullYear();
+
+            if (D1 === 31) D1 = 30;
+            if (D2 === 31 && D1 === 30) D2 = 30;
+
+            return (Y2 - Y1) * 360 + (M2 - M1) * 30 + (D2 - D1);
+        }
+
+        // XIRR 演算法 (Newton-Raphson)
+        function XIRR(values, dates, guess = 0.05) {
+            const tol = 1e-6;
+            const maxIter = 100;
+            let x0 = guess;
+            let f = 0;
+            let df = 0;
+            
+            // 將日期轉換為天數差 (相對於第一天)
+            const t0 = dates[0].getTime();
+            const days = dates.map(d => (d.getTime() - t0) / (1000 * 3600 * 24));
+
+            for (let i = 0; i < maxIter; i++) {
+                f = 0;
+                df = 0;
+                for (let j = 0; j < values.length; j++) {
+                    const factor = Math.pow(1 + x0, days[j] / 365);
+                    f += values[j] / factor;
+                    df -= (days[j] / 365) * values[j] / (factor * (1 + x0));
+                }
+                
+                if (Math.abs(f) < tol) return x0;
+                
+                const newX = x0 - f / df;
+                if (Math.abs(newX - x0) < tol) return newX;
+                x0 = newX;
+            }
+            return null;
+        }
+
+        function renderResult(res) {
+            const container = document.getElementById('resultsContainer');
+            const card = document.createElement('div');
+            card.className = "result-card bg-white p-6 rounded-xl shadow-md border-l-4 border-blue-500 relative";
+            
+            // 格式化數字
+            const fmtMoney = (n) => n.toLocaleString('en-US', {style:'currency', currency:'USD'});
+            const fmtPct = (n) => n ? n.toFixed(4) + '%' : 'N/A';
+            const fmtDate = (d) => d.toISOString().split('T')[0];
+
+            // 判斷比較結果
+            let compareHtml = '';
+            if (res.market) {
+                const diff = res.ytm.rate - res.market.ytm.rate;
+                const isBetter = diff > 0;
+                const colorClass = isBetter ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800";
+                const icon = isBetter ? "✅" : "⚠️";
+                const text = isBetter ? `您買得真好！比現在市場報酬率高 <b>${diff.toFixed(2)}%</b>` 
+                                      : `現在市場比較便宜，若現在買報酬率高 <b>${Math.abs(diff).toFixed(2)}%</b>`;
+                
+                compareHtml = `
+                    <div class="mt-4 p-3 rounded-lg ${colorClass} text-sm flex items-center">
+                        <span class="mr-2 text-xl">${icon}</span>
+                        <span>
+                            市場比較 (Ask: ${res.input.marketPrice}):<br>
+                            市場 YTM: <b>${fmtPct(res.market.ytm.rate)}</b> | 市場 YTC: <b>${fmtPct(res.market.ytc.rate)}</b><br>
+                            ${text}
+                        </span>
+                    </div>
+                `;
+            }
+
+            card.innerHTML = `
+                <button onclick="this.parentElement.remove()" class="absolute top-4 right-4 text-gray-400 hover:text-red-500">✕ 刪除</button>
+                
+                <div class="flex flex-wrap items-baseline gap-2 mb-2">
+                    <h3 class="text-xl font-bold text-gray-800">${res.input.name}</h3>
+                    <span class="text-xs bg-gray-200 px-2 py-1 rounded text-gray-600">CUSIP: ${res.input.cusip}</span>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                    <!-- 左邊：成本分析 -->
+                    <div class="space-y-2 text-sm text-gray-600">
+                        <p class="font-bold text-gray-700 border-b pb-1 mb-2">💰 成本結構分析</p>
+                        <div class="flex justify-between"><span>申購面額:</span> <span class="font-mono">${fmtMoney(res.input.faceValue)}</span></div>
+                        <div class="flex justify-between"><span>繳交總金額:</span> <span class="font-mono font-bold text-blue-600">${fmtMoney(res.input.totalCost)}</span></div>
+                        <div class="flex justify-between"><span>- 推算前手息:</span> <span class="font-mono text-gray-500">${fmtMoney(res.accruedInterest)}</span></div>
+                        <div class="flex justify-between"><span>- 推算手續費:</span> <span class="font-mono text-gray-500">${fmtMoney(res.commission)}</span></div>
+                    </div>
+
+                    <!-- 右邊：報酬率 -->
+                    <div class="space-y-2 text-sm">
+                        <p class="font-bold text-gray-700 border-b pb-1 mb-2">📈 您的實質報酬率</p>
+                        
+                        <div class="bg-blue-50 p-2 rounded">
+                            <div class="flex justify-between items-center">
+                                <span class="text-blue-900">持有到期 (YTM)</span>
+                                <span class="text-xl font-bold text-blue-700">${fmtPct(res.ytm.rate)}</span>
+                            </div>
+                            <div class="text-xs text-blue-400 text-right">預估淨利息收入: ${fmtMoney(res.ytm.totalInterest - res.accruedInterest)}</div>
+                        </div>
+
+                        <div class="bg-orange-50 p-2 rounded mt-2">
+                            <div class="flex justify-between items-center">
+                                <span class="text-orange-900">提前贖回 (YTC)</span>
+                                <span class="text-xl font-bold text-orange-700">${fmtPct(res.ytc.rate)}</span>
+                            </div>
+                            <div class="text-xs text-orange-400 text-right">贖回日: ${fmtDate(new Date(res.input.callDate))}</div>
+                        </div>
+                    </div>
+                </div>
+                ${compareHtml}
+            `;
+
+            container.prepend(card);
+        }
+
+        function clearAll() {
+            if(confirm("確定要清空所有計算結果嗎？")) {
+                document.getElementById('resultsContainer').innerHTML = '<div id="emptyState" class="bg-white p-12 rounded-xl shadow border-2 border-dashed border-gray-300 text-center text-gray-400"><p class="text-lg">👈 請在左側輸入資料，按下「加入」按鈕</p></div>';
+            }
+        }
+    </script>
+</body>
+</html>

@@ -16,10 +16,15 @@
         .schedule-table tr:last-child td { border-bottom: none; }
         .schedule-table td:first-child, .schedule-table th:first-child { text-align: left; }
         
-        /* 醒目提示樣式 - 加強版 */
         .call-date-row { background-color: #fff9c4 !important; border-left: 5px solid #f59e0b; }
         .call-date-row td { color: #b45309; font-weight: 800; }
         .call-date-tag { display: inline-block; background-color: #f59e0b; color: white; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle; }
+        
+        /* 修正：使用 opacity: 0 讓它在頁面上存在但不顯示，以便 JS 可以調用 showPicker */
+        .hidden-date-picker { opacity: 0; position: absolute; width: 0; height: 0; top: 0; left: 0; border: 0; padding: 0; margin: 0; }
+        
+        /* 讓容器相對定位，以便放置隱藏的 input */
+        .date-container { position: relative; }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -31,10 +36,16 @@
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- 左側：輸入表單 -->
             <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-md h-fit">
-                <h2 class="text-xl font-bold border-b pb-3 mb-4 text-gray-700 flex items-center">
-                    📝 新增債券資料
-                </h2>
+                <div class="flex justify-between items-center border-b pb-3 mb-4">
+                    <h2 class="text-xl font-bold text-gray-700 flex items-center">
+                        📝 新增債券資料
+                    </h2>
+                    <button type="button" onclick="resetForm()" class="text-sm bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded transition">
+                        ↺ 清空重填
+                    </button>
+                </div>
                 
                 <form id="bondForm" class="space-y-4">
                     <div>
@@ -53,19 +64,33 @@
                         </div>
                     </div>
 
+                    <!-- 日期設定 (修正日曆點擊) -->
                     <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">購買日期</label>
-                            <input type="date" id="purchaseDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" required>
+                        <div class="date-container">
+                            <div class="flex items-center gap-1 mb-1">
+                                <label class="block text-sm font-medium text-gray-700">購買日期</label>
+                                <!-- 使用 onclick 強制觸發 showPicker -->
+                                <span class="cursor-pointer text-lg hover:bg-gray-100 rounded px-1 select-none" title="點擊選擇日期" onclick="openPicker('purchaseDatePick')">📅</span>
+                                <input type="date" id="purchaseDatePick" class="hidden-date-picker" onchange="syncDate('purchaseDatePick', 'purchaseDate')">
+                            </div>
+                            <input type="text" id="purchaseDate" class="block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="YYYY/MM/DD" required>
                         </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">到期日</label>
-                            <input type="date" id="maturityDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" required>
+                        <div class="date-container">
+                            <div class="flex items-center gap-1 mb-1">
+                                <label class="block text-sm font-medium text-gray-700">到期日</label>
+                                <span class="cursor-pointer text-lg hover:bg-gray-100 rounded px-1 select-none" title="點擊選擇日期" onclick="openPicker('maturityDatePick')">📅</span>
+                                <input type="date" id="maturityDatePick" class="hidden-date-picker" onchange="syncDate('maturityDatePick', 'maturityDate')">
+                            </div>
+                            <input type="text" id="maturityDate" class="block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="YYYY/MM/DD" required>
                         </div>
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">券商可贖回日 (Call Date)</label>
-                        <input type="date" id="callDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" required>
+                    <div class="date-container">
+                        <div class="flex items-center gap-1 mb-1">
+                            <label class="block text-sm font-medium text-gray-700">券商可贖回日 (Call Date)</label>
+                            <span class="cursor-pointer text-lg hover:bg-gray-100 rounded px-1 select-none" title="點擊選擇日期" onclick="openPicker('callDatePick')">📅</span>
+                            <input type="date" id="callDatePick" class="hidden-date-picker" onchange="syncDate('callDatePick', 'callDate')">
+                        </div>
+                        <input type="text" id="callDate" class="block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="YYYY/MM/DD" required>
                         <p class="text-xs text-gray-500 mt-1">*系統會自動計算破月利息並插入列表</p>
                     </div>
 
@@ -78,10 +103,34 @@
                             <label class="block text-sm font-medium text-blue-900">申購成交價 (Price)</label>
                             <input type="number" step="0.001" id="cleanPrice" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="104.351" required>
                         </div>
-                        <div>
-                            <label class="block text-sm font-medium text-blue-900">實際繳交總金額 (含息費)</label>
-                            <input type="number" step="0.01" id="totalCost" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="104867.11" required>
-                            <p class="text-xs text-blue-600 mt-1">*請看對帳單上的 Total 扣款金額</p>
+
+                        <!-- 成本輸入模式切換 -->
+                        <div class="pt-2 border-t border-blue-200">
+                            <label class="block text-sm font-bold text-blue-900 mb-2">請選擇成本輸入方式：</label>
+                            <div class="flex gap-4 mb-2">
+                                <label class="flex items-center space-x-2 cursor-pointer">
+                                    <input type="radio" name="costMode" value="total" checked onchange="toggleCostMode()" class="text-blue-600 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-700">輸入總金額</span>
+                                </label>
+                                <label class="flex items-center space-x-2 cursor-pointer">
+                                    <input type="radio" name="costMode" value="rate" onchange="toggleCostMode()" class="text-blue-600 focus:ring-blue-500">
+                                    <span class="text-sm text-gray-700">輸入手續費率</span>
+                                </label>
+                            </div>
+
+                            <!-- 輸入框 A: 總金額 -->
+                            <div id="inputTotalCost">
+                                <label class="block text-sm font-medium text-blue-900">實際繳交總金額 (含息費)</label>
+                                <input type="number" step="0.01" id="totalCost" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="104867.11">
+                                <p class="text-xs text-blue-600 mt-1">*對帳單上的 Total 扣款金額</p>
+                            </div>
+
+                            <!-- 輸入框 B: 手續費率 -->
+                            <div id="inputCommRate" class="hidden">
+                                <label class="block text-sm font-medium text-blue-900">手續費率 (%)</label>
+                                <input type="number" step="0.001" id="commRate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="0.1">
+                                <p class="text-xs text-blue-600 mt-1">*例如 IBKR 通常約 0.1%</p>
+                            </div>
                         </div>
                     </div>
 
@@ -129,9 +178,74 @@
         const yyyy = today.getFullYear();
         const mm = String(today.getMonth() + 1).padStart(2, '0');
         const dd = String(today.getDate()).padStart(2, '0');
-        document.getElementById('purchaseDate').value = `${yyyy}-${mm}-${dd}`;
+        const todayStr = `${yyyy}/${mm}/${dd}`;
+        
+        // 預設購買日期為今天
+        document.getElementById('purchaseDate').value = todayStr;
 
         let bondsDataList = [];
+
+        // 觸發日期選擇器 (修正版)
+        function openPicker(inputId) {
+            try {
+                const input = document.getElementById(inputId);
+                // 嘗試使用現代瀏覽器的 showPicker API
+                if (input.showPicker) {
+                    input.showPicker();
+                } else {
+                    // Fallback: 聚焦 (在某些手機瀏覽器會有效)
+                    input.focus();
+                    input.click();
+                }
+            } catch (e) {
+                console.log('Browser does not support showPicker or input is hidden', e);
+                // 最後手段：暫時讓它變大並點擊
+                const input = document.getElementById(inputId);
+                input.style.opacity = 1;
+                input.style.width = '1px';
+                input.style.height = '1px';
+                input.click();
+                setTimeout(() => { 
+                    input.style.opacity = 0; 
+                    input.style.width = '0'; 
+                    input.style.height = '0';
+                }, 100);
+            }
+        }
+
+        // 日期選擇器同步功能 (格式轉換為 YYYY/MM/DD)
+        function syncDate(pickerId, inputId) {
+            const picker = document.getElementById(pickerId);
+            const input = document.getElementById(inputId);
+            if (picker.value) {
+                // 將 YYYY-MM-DD 轉為 YYYY/MM/DD
+                input.value = picker.value.replace(/-/g, '/');
+            }
+        }
+
+        function toggleCostMode() {
+            const mode = document.querySelector('input[name="costMode"]:checked').value;
+            const divTotal = document.getElementById('inputTotalCost');
+            const divRate = document.getElementById('inputCommRate');
+            
+            if (mode === 'total') {
+                divTotal.classList.remove('hidden');
+                divRate.classList.add('hidden');
+            } else {
+                divTotal.classList.add('hidden');
+                divRate.classList.remove('hidden');
+            }
+        }
+
+        // 清空表單按鈕功能
+        function resetForm() {
+            if(confirm("確定要清空輸入欄位嗎？")) {
+                document.getElementById('bondForm').reset();
+                document.getElementById('purchaseDate').value = todayStr;
+                document.getElementById('faceValue').value = "100000";
+                toggleCostMode();
+            }
+        }
 
         function searchPrice() {
             const cusip = document.getElementById('cusip').value;
@@ -145,46 +259,82 @@
             window.open(url, '_blank');
         }
 
-        function parseDateInput(id) {
-            const val = document.getElementById(id).value;
+        // 智慧日期解析
+        function parseSmartDate(val) {
             if (!val) return null;
-            const parts = val.split('-');
-            return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+            val = val.trim();
+            let parts = val.split(/[-/]/);
+            
+            if (parts.length !== 3) return null;
+
+            let y, m, d;
+            if (parts[0].length === 4) {
+                y = parseInt(parts[0]);
+                m = parseInt(parts[1]);
+                d = parseInt(parts[2]);
+            } else {
+                const p0 = parseInt(parts[0]);
+                const p1 = parseInt(parts[1]);
+                const p2 = parseInt(parts[2]);
+                if (parts[2].length === 4) {
+                    y = p2;
+                    m = p0;
+                    d = p1;
+                } else {
+                    return null;
+                }
+            }
+
+            if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
+            return new Date(y, m - 1, d);
         }
 
         function addBond() {
-            const purchaseDateStr = document.getElementById('purchaseDate').value;
-            const maturityDateStr = document.getElementById('maturityDate').value;
-            const callDateStr = document.getElementById('callDate').value;
+            const purchaseDateInput = document.getElementById('purchaseDate').value;
+            const maturityDateInput = document.getElementById('maturityDate').value;
+            const callDateInput = document.getElementById('callDate').value;
+            
+            const purchaseDateObj = parseSmartDate(purchaseDateInput);
+            const maturityDateObj = parseSmartDate(maturityDateInput);
+            const callDateObj = parseSmartDate(callDateInput);
+
+            const costMode = document.querySelector('input[name="costMode"]:checked').value;
+            let totalCostInput = parseFloat(document.getElementById('totalCost').value);
+            let commRateInput = parseFloat(document.getElementById('commRate').value);
 
             const data = {
                 id: Date.now(),
                 name: document.getElementById('bondName').value,
                 cusip: document.getElementById('cusip').value || '-',
                 couponRate: parseFloat(document.getElementById('couponRate').value),
-                purchaseDate: parseDateInput('purchaseDate'),
-                maturityDate: parseDateInput('maturityDate'),
-                callDate: parseDateInput('callDate'),
-                callDateStr: callDateStr, // 保存原始字串
+                purchaseDate: purchaseDateObj,
+                maturityDate: maturityDateObj,
+                callDate: callDateObj,
+                callDateStr: callDateInput, 
                 faceValue: parseFloat(document.getElementById('faceValue').value),
                 cleanPrice: parseFloat(document.getElementById('cleanPrice').value),
-                totalCost: parseFloat(document.getElementById('totalCost').value),
+                costMode: costMode,
+                totalCostInput: totalCostInput,
+                commRateInput: commRateInput,
                 marketPrice: document.getElementById('marketPrice').value ? parseFloat(document.getElementById('marketPrice').value) : null
             };
 
-            if (!data.name || isNaN(data.couponRate) || isNaN(data.totalCost) || !data.purchaseDate || !data.maturityDate) {
-                alert("請填寫所有必填欄位！");
+            if (!data.name || isNaN(data.couponRate) || !data.purchaseDate || !data.maturityDate) {
+                alert("請填寫基本資料，並檢查日期格式 (例如 2035/05/12)！");
+                return;
+            }
+            if (costMode === 'total' && isNaN(data.totalCostInput)) {
+                alert("請輸入實際繳交總金額！");
+                return;
+            }
+            if (costMode === 'rate' && isNaN(data.commRateInput)) {
+                alert("請輸入手續費率！");
                 return;
             }
 
             const result = calculateMetrics(data);
             bondsDataList.push(result);
             renderResult(result);
-            
-            document.getElementById('bondName').value = '';
-            document.getElementById('cusip').value = '';
-            document.getElementById('cleanPrice').value = '';
-            document.getElementById('totalCost').value = '';
             document.getElementById('emptyState').style.display = 'none';
         }
 
@@ -202,7 +352,6 @@
             const rate = data.couponRate / 100;
             const price = data.cleanPrice / 100;
             
-            // 計算前手息
             let tempDate = new Date(data.maturityDate);
             let couponDates = [];
             while (tempDate > new Date(data.purchaseDate.getFullYear() - 2, 0, 1)) {
@@ -218,22 +367,32 @@
             
             const daysHeld = getDays30360(lastCouponDate, data.purchaseDate);
             const daysInPeriod = 180;
-            
             const periodCoupon = faceVal * rate / 2;
             const accruedInterest = periodCoupon * (daysHeld / daysInPeriod);
             const principalCost = faceVal * price;
-            const commission = data.totalCost - principalCost - accruedInterest;
 
-            const ytmResult = calculateYield(data.totalCost, data.purchaseDate, data.maturityDate, periodCoupon, nextCouponDate, faceVal);
-            const ytcResult = calculateYield(data.totalCost, data.purchaseDate, data.callDate, periodCoupon, nextCouponDate, faceVal);
+            let finalTotalCost = 0;
+            let finalCommission = 0;
 
-            // 生成配息試算表 (傳入 Call Date 字串進行比對)
-            const schedule = generateSchedule(data.totalCost, data.purchaseDate, data.maturityDate, periodCoupon, nextCouponDate, faceVal, data.callDateStr, data.callDate);
+            if (data.costMode === 'total') {
+                finalTotalCost = data.totalCostInput;
+                finalCommission = finalTotalCost - principalCost - accruedInterest;
+            } else {
+                finalCommission = faceVal * (data.commRateInput / 100);
+                finalTotalCost = principalCost + accruedInterest + finalCommission;
+            }
+
+            data.totalCost = finalTotalCost;
+
+            const ytmResult = calculateYield(finalTotalCost, data.purchaseDate, data.maturityDate, periodCoupon, nextCouponDate, faceVal);
+            const ytcResult = calculateYield(finalTotalCost, data.purchaseDate, data.callDate, periodCoupon, nextCouponDate, faceVal);
+
+            const schedule = generateSchedule(finalTotalCost, data.purchaseDate, data.maturityDate, periodCoupon, nextCouponDate, faceVal, data.callDate);
 
             let marketResult = null;
             if (data.marketPrice) {
                 const mPrice = data.marketPrice / 100;
-                const estMarketCost = (faceVal * mPrice) + accruedInterest + commission;
+                const estMarketCost = (faceVal * mPrice) + accruedInterest + finalCommission;
                 const mYtm = calculateYield(estMarketCost, data.purchaseDate, data.maturityDate, periodCoupon, nextCouponDate, faceVal);
                 const mYtc = calculateYield(estMarketCost, data.purchaseDate, data.callDate, periodCoupon, nextCouponDate, faceVal);
                 marketResult = { ytm: mYtm, ytc: mYtc, cost: estMarketCost };
@@ -242,7 +401,7 @@
             return {
                 input: data,
                 accruedInterest,
-                commission,
+                commission: finalCommission,
                 ytm: ytmResult,
                 ytc: ytcResult,
                 schedule: schedule, 
@@ -250,7 +409,6 @@
             };
         }
 
-        // 新增：日期格式化 (避免時區問題)
         function fmtIsoDate(d) {
             const y = d.getFullYear();
             const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -258,10 +416,9 @@
             return `${y}-${m}-${day}`;
         }
 
-        function generateSchedule(cost, startDate, endDate, periodCoupon, firstCouponDate, faceVal, callDateStr, callDate) {
+        function generateSchedule(cost, startDate, endDate, periodCoupon, firstCouponDate, faceVal, callDate) {
             let schedule = [];
             
-            // 1. 產生標準配息列表
             let standardDates = [];
             let d = new Date(firstCouponDate);
             while (d <= endDate) {
@@ -269,11 +426,9 @@
                 d.setMonth(d.getMonth() + 6);
             }
 
-            // 2. 準備要遍歷的所有日期 (包含 Call Date)
             let allDates = standardDates.map(d => ({ date: d, type: 'coupon' }));
             
-            // 檢查 Call Date 是否需要插入
-            if (callDate > startDate && callDate <= endDate) {
+            if (callDate && callDate > startDate && callDate <= endDate) {
                 const callIso = fmtIsoDate(callDate);
                 const exists = standardDates.some(d => fmtIsoDate(d) === callIso);
                 if (!exists) {
@@ -283,12 +438,10 @@
                     if (match) match.isCallDate = true;
                 }
             }
-            
             allDates.sort((a, b) => a.date - b.date);
 
-            // 3. 遍歷計算
             let cumulativeInterest = 0;
-            let lastInterestDate = new Date(firstCouponDate); // 推算上一個配息日
+            let lastInterestDate = new Date(firstCouponDate); 
             lastInterestDate.setMonth(lastInterestDate.getMonth() - 6);
 
             allDates.forEach(item => {
@@ -300,18 +453,11 @@
                     cumulativeInterest += currentAmount;
                     lastInterestDate = new Date(currentD); 
                 } else {
-                    // 破月利息計算
                     const days = getDays30360(lastInterestDate, currentD);
                     const safeDays = Math.max(0, days);
                     currentAmount = periodCoupon * (safeDays / 180);
                 }
 
-                // *** 修改重點：計算累積損益 ***
-                // 情境：當日贖回 -> 拿回本金 + 這一期的利息(或破月息) + 之前所有領到的利息
-                // 累積損益 = (累積已領息 + 當期息 + 本金) - 當初總成本
-                // 這裡的 cumulativeInterest 已經包含 currentAmount (如果是 coupon)
-                // 如果是 call (type != coupon)，cumulativeInterest 還沒加上 currentAmount，所以要手動加
-                
                 let totalReceived = 0;
                 if (item.type === 'coupon') {
                     totalReceived = cumulativeInterest + faceVal;
@@ -319,9 +465,7 @@
                     totalReceived = cumulativeInterest + currentAmount + faceVal;
                 }
                 
-                // 淨損益金額
                 const netProfit = totalReceived - cost;
-
                 const totalROI = netProfit / cost;
                 const daysDiff = (currentD - startDate) / (1000 * 60 * 60 * 24);
                 const years = daysDiff / 365;
@@ -334,20 +478,17 @@
                     tempFlows.push(periodCoupon);
                     tempDates.push(new Date(x.date));
                 });
-                
                 tempFlows.push(currentAmount + faceVal);
                 tempDates.push(new Date(currentD));
                 
                 const xirrVal = XIRR(tempFlows, tempDates);
-                
                 const isTargetCall = (item.type === 'call' || item.isCallDate);
 
                 schedule.push({
                     date: currentD,
                     amount: currentAmount,
-                    // 這裡為了表格顯示，如果是 Call Date 插入行，累積利息我們顯示到當下拿到的總息
                     cumulative: item.type === 'coupon' ? cumulativeInterest : cumulativeInterest + currentAmount,
-                    netProfit: netProfit, // 新增：累積損益金額
+                    netProfit: netProfit, 
                     totalROI: totalROI * 100,
                     simpleAnnualROI: simpleAnnualROI * 100,
                     annualizedROI: xirrVal ? xirrVal * 100 : 0,
@@ -474,7 +615,6 @@
                     dateCellContent += ` <span class="call-date-tag">🔔 提前贖回</span>`;
                 }
                 
-                // 損益顏色：賺錢綠色，賠錢紅色
                 const profitClass = row.netProfit >= 0 ? 'text-green-700 font-bold' : 'text-red-600 font-bold';
 
                 return `
